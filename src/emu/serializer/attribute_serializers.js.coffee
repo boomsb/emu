@@ -30,3 +30,10 @@ Emu.AttributeSerializers =
 
     deserialize: (value) ->
       if Ember.isEmpty(value) then null else Number(value)
+
+  date:
+    serialize: (value) ->
+      if Ember.isNone(value) then null else new Date(value)
+
+    deserialize: (value) ->
+      if Ember.isEmpty(value) then null else new Date(value)
