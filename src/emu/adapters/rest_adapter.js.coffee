@@ -20,6 +20,15 @@ Emu.RestAdapter = Ember.Object.extend
       error: =>
         @_didError(store, model)
 
+  findChild: (type, store, model, parentId) ->
+    $.ajax
+      url: @_getUrlForModel(model.get("parent")) + "/"+ parentId + "/" + @_serializer.serializeTypeName(type, true)
+      type: "GET"
+      success: (jsonData) =>
+        @_didFindById(store, model, jsonData)
+      error: =>
+        @_didError(store, model)
+
   findQuery: (type, store, collection, queryHash) ->
     $.ajax
       url: @_getUrlForType(type) + @_serializer.serializeQueryHash(queryHash)
@@ -88,14 +97,20 @@ Emu.RestAdapter = Ember.Object.extend
     store.didSave(model)
 
   _getUrlForModel: (model) ->
-    url = if Emu.isCollection(model) then @_serializer.serializeTypeName(model.get("type")) else ""
+    url = if Emu.isCollection(model)
+      @_serializer.serializeTypeName(model.get("type"))
+    else
+      if model.get("lazy")
+        @_serializer.serializeTypeName(model.constructor, true)
+      else
+        ""
     currentModel = model
     buildUrl = =>
       currentModel = currentModel.get("parent")
       if Emu.isCollection(currentModel)
         url = @_serializer.serializeTypeName(currentModel.get("type")) + (if url then "/" + url else "")
       else
-        url = currentModel.primaryKeyValue() + "/" + url
+        url = (if currentModel.get("lazy") then @_serializer.serializeTypeName(currentModel.constructor, true) else currentModel.primaryKeyValue()) + "/" + url
     buildUrl() while currentModel.get("parent")
     @_getBaseUrl() + url
 

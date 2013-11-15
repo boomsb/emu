@@ -1,5 +1,5 @@
-// Version: 0.1.0-79-gc1c3361
-// Last commit: c1c3361 (2013-05-05 11:25:04 -0400)
+// Version: 0.1.0-116-ge829dd6
+// Last commit: e829dd6 (2013-10-03 13:55:35 -0400)
 
 
 (function() {
@@ -132,6 +132,20 @@
         }
       });
     },
+    findChild: function(type, store, model, parentId) {
+      var _this = this;
+
+      return $.ajax({
+        url: this._getUrlForModel(model.get("parent")) + "/" + parentId + "/" + this._serializer.serializeTypeName(type, true),
+        type: "GET",
+        success: function(jsonData) {
+          return _this._didFindById(store, model, jsonData);
+        },
+        error: function() {
+          return _this._didError(store, model);
+        }
+      });
+    },
     findQuery: function(type, store, collection, queryHash) {
       var _this = this;
 
@@ -228,14 +242,14 @@
       var buildUrl, currentModel, url,
         _this = this;
 
-      url = Emu.isCollection(model) ? this._serializer.serializeTypeName(model.get("type")) : "";
+      url = Emu.isCollection(model) ? this._serializer.serializeTypeName(model.get("type")) : model.get("lazy") ? this._serializer.serializeTypeName(model.constructor, true) : "";
       currentModel = model;
       buildUrl = function() {
         currentModel = currentModel.get("parent");
         if (Emu.isCollection(currentModel)) {
           return url = _this._serializer.serializeTypeName(currentModel.get("type")) + (url ? "/" + url : "");
         } else {
-          return url = currentModel.primaryKeyValue() + "/" + url;
+          return url = (currentModel.get("lazy") ? _this._serializer.serializeTypeName(currentModel.constructor, true) : currentModel.primaryKeyValue()) + "/" + url;
         }
       };
       while (currentModel.get("parent")) {
@@ -264,6 +278,9 @@
     didFinishLoading: function() {
       return this.trigger("didFinishLoading");
     },
+    didFinishPartialLoading: function() {
+      return this.trigger("didFinishPartialLoading");
+    },
     didStartSaving: function() {
       return this.trigger("didStartSaving");
     },
@@ -282,6 +299,7 @@
 (function() {
   Emu.StateTracked = Ember.Mixin.create({
     init: function() {
+      this._super();
       return Emu.StateTracker.create().track(this);
     }
   });
@@ -307,7 +325,7 @@
       }
     };
     return Ember.computed(function(key, value, oldValue) {
-      var _ref, _ref1;
+      var _ref, _ref1, _ref2;
 
       meta = this.constructor.metaForProperty(key);
       if (arguments.length > 1) {
@@ -316,12 +334,18 @@
         this.set("hasValue", true);
       } else {
         if (meta.options.lazy && this.primaryKeyValue()) {
-          if ((_ref = this.get("store")) != null) {
-            _ref.loadAll(Emu.Model.getAttr(this, key));
+          if (meta.options.collection) {
+            if ((_ref = this.get("store")) != null) {
+              _ref.loadAll(Emu.Model.getAttr(this, key));
+            }
+          } else if (meta.isModel()) {
+            if ((_ref1 = this.get("store")) != null) {
+              _ref1.loadModel(Emu.Model.getAttr(this, key));
+            }
           }
         } else if (meta.options.partial) {
-          if ((_ref1 = this.get("store")) != null) {
-            _ref1.loadModel(this);
+          if ((_ref2 = this.get("store")) != null) {
+            _ref2.loadModel(this);
           }
         }
         if (meta.options.paged) {
@@ -438,7 +462,8 @@
             parent: record,
             type: meta.type(),
             store: record.get("store"),
-            lazy: meta.options.lazy
+            lazy: meta.options.lazy,
+            pageSize: meta.options.pageSize
           });
           record._attributes[key].addObserver("hasValue", function() {
             return record.set("hasValue", true);
@@ -452,7 +477,13 @@
             record._attributes[key].subscribeToUpdates();
           }
         } else if (meta.isModel()) {
-          record._attributes[key] = meta.type().create();
+          record._attributes[key] = meta.type().create({
+            parent: record,
+            lazy: meta.options.lazy
+          });
+          if (meta.options.updatable) {
+            record._attributes[key].subscribeToUpdates();
+          }
           record._attributes[key].on("didStateChange", function() {
             return record.didStateChange();
           });
@@ -477,10 +508,10 @@
     init: function() {
       var _this = this;
 
-      this._super();
       if (!this.get("content")) {
         this.set("content", Ember.A([]));
       }
+      this._super();
       this.createRecord = function(hash) {
         var model, paramHash, primaryKey;
 
@@ -529,11 +560,13 @@
 }).call(this);
 (function() {
   Emu.PagedModelCollection = Emu.ModelCollection.extend({
-    pageSize: 250,
     loadedPageCursor: 1,
     init: function() {
       this._super();
-      return this.set("pages", Em.A([]));
+      this.set("pages", Em.A([]));
+      if (!this.get("pageSize")) {
+        return this.set("pageSize", 250);
+      }
     },
     loadMore: function() {
       this.get("store").loadPaged(this, this.get("loadedPageCursor"));
@@ -638,7 +671,7 @@
     },
     number: {
       serialize: function(value) {
-        if (Ember.isNone(value)) {
+        if (Ember.isNone(value) || value === "") {
           return null;
         } else {
           return Number(value);
@@ -664,20 +697,20 @@
     deserializeKey: function(key) {
       return key;
     },
-    serializeTypeName: function(type) {
+    serializeTypeName: function(type, isSingular) {
       var name, parts, serialized;
 
       if (type.resourceName) {
         name = type.resourceName;
         if (typeof name === 'function') {
-          return name();
+          return name(isSingular);
         } else {
           return name;
         }
       } else {
         parts = type.toString().split(".");
         serialized = this.serializeKey(parts[parts.length - 1]);
-        if (this.get("pluralization")) {
+        if (this.get("pluralization") && !isSingular) {
           return serialized + "s";
         } else {
           return serialized;
@@ -699,6 +732,10 @@
       var primaryKeyValue,
         _this = this;
 
+      if (!jsonData) {
+        model.clear();
+        return;
+      }
       primaryKeyValue = jsonData[model.primaryKey()];
       if (primaryKeyValue) {
         model.primaryKeyValue(primaryKeyValue);
@@ -786,7 +823,7 @@
           return jsonData[serializedKey] = this.serializeModel(value);
         }
       } else {
-        if (value) {
+        if (value !== void 0) {
           attributeSerializer = Emu.AttributeSerializers[meta.type()];
           return jsonData[serializedKey] = attributeSerializer.serialize(value);
         }
@@ -816,7 +853,7 @@
       var _ref, _ref1, _ref2;
 
       if (!(this.get("revision") === Emu.CURRENT_API_REVISION || Emu.TESTING)) {
-        throw new Error("Error: Emu has had breaking changes since your last update. Please review them at https://github.com/charlieridley/emu/breaking_changes.md and update the `revision` property on your store to " + Emu.CURRENT_API_REVISION);
+        throw new Error("Error: Emu has had breaking changes since your last update. Please review them at https://github.com/charlieridley/emu/blob/master/breaking_changes.md and update the `revision` property on your store to " + Emu.CURRENT_API_REVISION);
       }
       if (!Ember.get(Emu, "defaultStore")) {
         Ember.set(Emu, "defaultStore", this);
@@ -868,6 +905,9 @@
       var deferredQueries;
 
       this._didCollectionLoad(collection);
+      collection.get("content").forEach(function(item) {
+        return item.didFinishPartialLoading();
+      });
       deferredQueries = this.get("deferredQueries")[collection.type];
       if (deferredQueries) {
         return deferredQueries.forEach(function(deferredQuery) {
@@ -973,7 +1013,11 @@
     loadModel: function(model) {
       if (!model.get("isLoading") && !model.get("isLoaded")) {
         model.didStartLoading();
-        this._adapter.findById(model.constructor, this, model, model.primaryKeyValue());
+        if (!model.get("lazy")) {
+          this._adapter.findById(model.constructor, this, model, model.primaryKeyValue());
+        } else {
+          this._adapter.findChild(model.constructor, this, model, model.get("parent").primaryKeyValue());
+        }
       }
       return model;
     },
@@ -1008,9 +1052,12 @@
       return this._getCollectionForType(model.constructor).deleteRecord(model);
     },
     loadPaged: function(pagedCollection, pageNumber) {
+      pagedCollection.didStartLoading();
       return this._adapter.findPage(pagedCollection, this, pageNumber);
     },
-    didFindPage: function(pagedCollection, pageNumber) {},
+    didFindPage: function(pagedCollection, pageNumber) {
+      return pagedCollection.didFinishLoading();
+    },
     _didCollectionLoad: function(collection) {
       return collection.didFinishLoading();
     },

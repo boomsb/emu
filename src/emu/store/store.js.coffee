@@ -101,7 +101,10 @@ Emu.Store = Ember.Object.extend
   loadModel: (model) ->
     if not model.get("isLoading") and not model.get("isLoaded")
       model.didStartLoading()
-      @_adapter.findById(model.constructor, this, model, model.primaryKeyValue())
+      if not model.get("lazy")
+        @_adapter.findById(model.constructor, this, model, model.primaryKeyValue())
+      else
+        @_adapter.findChild(model.constructor, this, model, model.get("parent").primaryKeyValue())
     model
 
   subscribeToUpdates: (model) ->
@@ -125,9 +128,11 @@ Emu.Store = Ember.Object.extend
     @_getCollectionForType(model.constructor).deleteRecord(model)
 
   loadPaged: (pagedCollection, pageNumber) ->
+    pagedCollection.didStartLoading()
     @_adapter.findPage(pagedCollection, this, pageNumber)
 
   didFindPage: (pagedCollection, pageNumber) ->
+    pagedCollection.didFinishLoading()
 
   _didCollectionLoad: (collection) ->
     collection.didFinishLoading()

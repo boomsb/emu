@@ -5,14 +5,14 @@ Emu.Serializer = Ember.Object.extend
 
   deserializeKey: (key) -> key
 
-  serializeTypeName: (type) ->
+  serializeTypeName: (type, isSingular) ->
     if type.resourceName
       name = type.resourceName
-      if typeof name is 'function' then name() else name
+      if typeof name is 'function' then name(isSingular) else name
     else
       parts = type.toString().split(".")
       serialized = @serializeKey(parts[parts.length - 1])
-      if @get("pluralization") then serialized + "s" else serialized
+      if @get("pluralization") and not isSingular then serialized + "s" else serialized
 
   serializeModel: (model) ->
     jsonData = {}
@@ -22,6 +22,9 @@ Emu.Serializer = Ember.Object.extend
     jsonData
 
   deserializeModel: (model, jsonData, addative) ->
+    if not jsonData
+      model.clear()
+      return
     primaryKeyValue = jsonData[model.primaryKey()]
     model.primaryKeyValue(primaryKeyValue) if primaryKeyValue
     model.constructor.eachEmuField (property, meta) =>
@@ -72,6 +75,6 @@ Emu.Serializer = Ember.Object.extend
     else if meta.isModel()
       jsonData[serializedKey] = @serializeModel(value) if value.get("hasValue")
     else
-      if value
+      if value != undefined
         attributeSerializer = Emu.AttributeSerializers[meta.type()]
         jsonData[serializedKey] = attributeSerializer.serialize(value)

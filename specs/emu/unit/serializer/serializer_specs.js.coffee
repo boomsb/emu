@@ -5,20 +5,38 @@ describe "Emu.Serializer", ->
   describe "serializeTypeName", ->
 
     describe "pluralization on", ->
-      beforeEach ->
-        @serializer = Emu.Serializer.create()
 
-      it "should serialize and pluralize the name", ->
-        result = @serializer.serializeTypeName(App.ClubTropicana)
-        expect(result).toEqual("clubTropicanas")
+      describe "isSingular false", ->
+        beforeEach ->
+          @serializer = Emu.Serializer.create()
 
-      it "should serialize the name using a user-defined name", ->
-        result = @serializer.serializeTypeName(App.Person)
-        expect(result).toEqual("people")
+        it "should serialize and pluralize the name", ->
+          result = @serializer.serializeTypeName(App.ClubTropicana)
+          expect(result).toEqual("clubTropicanas")
 
-      it "should serialize the name using a user-defined serialization rule if needed", ->
-        result = @serializer.serializeTypeName(App.CustomPerson)
-        expect(result).toEqual("custom_people")
+        it "should serialize the name using a user-defined name", ->
+          result = @serializer.serializeTypeName(App.Person)
+          expect(result).toEqual("people")
+
+        it "should serialize the name using a user-defined serialization rule if needed", ->
+          result = @serializer.serializeTypeName(App.CustomPerson)
+          expect(result).toEqual("custom_people")
+
+      describe "isSingular true", ->
+        beforeEach ->
+          @serializer = Emu.Serializer.create()
+
+        it "should serialize and pluralize the name", ->
+          result = @serializer.serializeTypeName(App.ClubTropicana, true)
+          expect(result).toEqual("clubTropicana")
+
+        it "should serialize the name using a user-defined name", ->
+          result = @serializer.serializeTypeName(App.Person, true)
+          expect(result).toEqual("people")
+
+        it "should serialize the name using a user-defined serialization rule if needed", ->
+          result = @serializer.serializeTypeName(App.CustomPerson, true)
+          expect(result).toEqual("custom_person")
 
     describe "pluralization off", ->
       beforeEach ->
@@ -39,6 +57,15 @@ describe "Emu.Serializer", ->
 
   describe "deserializeModel", ->
 
+    describe "null value", ->
+      beforeEach ->
+        @serializer = Emu.Serializer.create()
+        @model = Person.create()
+        spyOn(@model, "clear")
+        @serializer.deserializeModel(@model, null)
+
+      it "should set the model to no value", ->
+        expect(@model.clear).toHaveBeenCalled()
     describe "simple fields only", ->
 
       describe "default primaryKey", ->
@@ -355,6 +382,21 @@ describe "Emu.Serializer", ->
           expect(@jsonResult).toEqual
             customerId: "55"
             name: "Terry the customer"
+
+      describe "false boolean value", ->
+        Job = Emu.Model.extend
+          isDone: Emu.field("boolean")
+        beforeEach ->
+          job = Job.create
+            id: "8"
+            isDone: false
+          @serializer = Emu.Serializer.create()
+          @jsonResult = @serializer.serializeModel(job)
+
+        it "should serialize the boolean value", ->
+          expect(@jsonResult).toEqual
+            id: "8"
+            isDone: false
 
     describe "nested collection", ->
 

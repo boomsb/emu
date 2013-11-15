@@ -144,7 +144,6 @@ describe "Emu.field", ->
 
         it "should get the models from the store only once", ->
           expect(@store.loadAll.calls.length).toEqual(1)
-          @result = @model.get("orders")
 
       describe "parent does not have primary key", ->
         beforeEach ->
@@ -162,6 +161,43 @@ describe "Emu.field", ->
         it "should not load the collection from the store", ->
           expect(@store.loadAll.calls.length).toEqual(0)
 
+    describe "lazy model", ->
+
+      describe "which is not set", ->
+        beforeEach ->
+          @store = Ember.Object.create
+            loadModel: ->
+          @order = App.Order.create()
+          spyOn(@store, "loadModel")
+          spyOn(App.Order, "create").andReturn(@order)
+          Person = Emu.Model.extend
+            store: @store
+            order: Emu.field("App.Order", {lazy: true})
+          @model = Person.create(id:6)
+          @result = @model.get("order")
+
+        it "should create an order", ->
+          expect(App.Order.create).toHaveBeenCalled()
+
+        it "should load the order", ->
+          expect(@store.loadModel).toHaveBeenCalledWith(@order)
+
+      describe "is loaded", ->
+        beforeEach ->
+          @store = Ember.Object.create
+            loadModel: ->
+          @order = App.Order.create()
+          spyOn(@store, "loadModel")
+          spyOn(App.Order, "create").andReturn(@order)
+          Person = Emu.Model.extend
+            store: @store
+            order: Emu.field("App.Order", {lazy: true})
+          @model = Person.create(id:6)
+          @model.get("order")
+          @model.get("order")
+
+        it "should get the model from the store only once", ->
+          expect(@store.loadModel.calls.length).toEqual(1)
 
     describe "partial property", ->
 
@@ -238,6 +274,22 @@ describe "Emu.field", ->
 
         it "should return the collection", ->
           expect(@result).toBe(@orders)
+
+      describe "specify pageSize", ->
+        beforeEach ->
+          @store = Ember.Object.create
+            loadAll: ->
+          @orders = Emu.PagedModelCollection.create(type: App.Order)
+          spyOn(@orders, "loadMore")
+          spyOn(Emu.PagedModelCollection, "create").andReturn(@orders)
+          Person = Emu.Model.extend
+            store: @store
+            orders: Emu.field("App.Order", {collection: true, paged: true, pageSize: 10})
+          @model = Person.create(id:6)
+          @result = @model.get("orders")
+
+        it "should create the paged model collection passing the pageSize", ->
+          expect(Emu.PagedModelCollection.create.mostRecentCall.args[0].pageSize).toEqual(10)
 
   describe "set", ->
 

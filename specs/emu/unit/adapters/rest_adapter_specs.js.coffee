@@ -130,6 +130,33 @@ describe "Emu.RestAdapter", ->
         expect($.ajax.mostRecentCall.args[0].url).toEqual("api/parentperson/5/person")
         expect($.ajax.mostRecentCall.args[0].type).toEqual("GET")
 
+    describe "lazy collection inside lazy object", ->
+      beforeEach ->
+        spyOn($, "ajax")
+        models = Emu.ModelCollection.create type: App.ReportRecord, parent: App.Report.createRecord
+          id: 5
+          lazy: true
+          parent: App.Manager.create
+            id: 6
+            parent: Emu.ModelCollection.create(type: App.Manager)
+
+        store = Ember.Object.create()
+        spyOn(serializer, "serializeTypeName").andCallFake (type) ->
+          if type == App.ReportRecord
+            return "reportRecords"
+          if type == App.Report
+            return "report"
+          if type == App.Manager
+            return "managers"
+        @adapter = Emu.RestAdapter.create
+          namespace: "api"
+          serializer: Serializer
+        @adapter.findAll(App.ReportRecord, store, models)
+
+      it "should make a GET request to the URL for the entities", ->
+        expect($.ajax.mostRecentCall.args[0].url).toEqual("api/managers/6/report/reportRecords")
+        expect($.ajax.mostRecentCall.args[0].type).toEqual("GET")
+
   describe "findById", ->
 
     describe "starts loading", ->
@@ -164,6 +191,56 @@ describe "Emu.RestAdapter", ->
           namespace: "api"
           serializer: Serializer
         @adapter.findById(Person, @store, @model, 5)
+        $.ajax.mostRecentCall.args[0].success(@jsonData)
+
+      it "should deserialize the model", ->
+        expect(serializer.deserializeModel).toHaveBeenCalledWith(@model, @jsonData)
+
+      it "should notify the store", ->
+        expect(@store.didFindById).toHaveBeenCalledWith(@model)
+
+  describe "findChild", ->
+
+    describe "starts loading", ->
+      beforeEach ->
+        spyOn($, "ajax")
+        students = Emu.ModelCollection.create(type: App.Student)
+        student = students.createRecord(id: 9)
+        model = App.Teacher.create(parent: student)
+        store = Ember.Object.create()
+        spyOn(serializer, "serializeTypeName").andCallFake (type, isSingular) ->
+          if isSingular
+            if type == App.Teacher then return "teacher"
+          if not isSingular
+            if type == App.Student then return "students"
+        @adapter = Emu.RestAdapter.create
+          namespace: "api"
+          serializer: Serializer
+        @adapter.findChild(App.Teacher, store, model, 9)
+
+      it "should make a GET request to the endpoint for the entity", ->
+        expect($.ajax.mostRecentCall.args[0].url).toEqual("api/students/9/teacher")
+        expect($.ajax.mostRecentCall.args[0].type).toEqual("GET")
+
+    describe "finishes loading", ->
+      beforeEach ->
+        @jsonData =
+          id: 10
+          name: "Bob"
+        spyOn($, "ajax")
+        students = Emu.ModelCollection.create(type: App.Student)
+        student = students.createRecord(id: 9)
+        @model = App.Teacher.create(parent: student)
+        @store = Ember.Object.create(didFindById: ->)
+        spyOn(@store, "didFindById")
+        spyOn(serializer, "serializeTypeName").andCallFake (type) ->
+          if type == App.Teacher then return "teacher"
+          if type == App.Student then return "student"
+        spyOn(serializer, "deserializeModel")
+        @adapter = Emu.RestAdapter.create
+          namespace: "api"
+          serializer: Serializer
+        @adapter.findChild(App.Teacher, @store, @model, 9)
         $.ajax.mostRecentCall.args[0].success(@jsonData)
 
       it "should deserialize the model", ->
@@ -342,6 +419,25 @@ describe "Emu.RestAdapter", ->
 
       it "should send the request to the correct URL for the model", ->
         expect($.ajax.mostRecentCall.args[0].url).toEqual("api/customer/10/order")
+
+    describe "is lazy and has parent", ->
+      beforeEach ->
+        spyOn($, "ajax")
+        person = App.LazyPerson.create
+          id: 10
+          parent: Emu.ModelCollection.create
+            type: App.LazyPerson
+        address = App.Address.create(lazy: true, parent: person)
+        @adapter = Emu.RestAdapter.create
+          namespace: "api"
+          serializer: Serializer
+        spyOn(serializer, "serializeTypeName").andCallFake (type, isSingular) ->
+          if type == App.LazyPerson then return "lazyperson"
+          if type == App.Address and isSingular then return "address"
+        @adapter.insert(Ember.Object.create(), address)
+
+      it "should send the request to the correct URL for the model", ->
+        expect($.ajax.mostRecentCall.args[0].url).toEqual("api/lazyperson/10/address")
 
   describe "update", ->
 

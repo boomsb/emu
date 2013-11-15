@@ -2,6 +2,7 @@ describe "Emu.Store", ->
   adapter = Ember.Object.create
     findAll: ->
     findById: ->
+    findChild: ->
     findQuery: ->
     findPage: ->
     insert: ->
@@ -357,23 +358,54 @@ describe "Emu.Store", ->
       expect(Emu.ModelCollection.create).not.toHaveBeenCalled()
 
   describe "loadModel", ->
-    describe "start loading", ->
-      beforeEach ->
-        @model = Person.create(id: 4)
-        spyOn(adapter, "findById")
-        @store = Emu.Store.create
-          adapter: Adapter
-        @model.on "didStartLoading", => @didStartLoading = true
-        @store.loadModel(@model)
 
-      it "should fire didStartLoading", ->
-        expect(@didStartLoading).toBeTruthy()
+    describe "is not lazy child", ->
 
-      it "should set isLoading on the model to true", ->
-        expect(@model.get("isLoading")).toBeTruthy()
+      describe "start loading", ->
+        beforeEach ->
+          @model = Person.create(id: 4)
+          spyOn(adapter, "findById")
+          spyOn(adapter, "findChild")
+          @store = Emu.Store.create
+            adapter: Adapter
+          @model.on "didStartLoading", => @didStartLoading = true
+          @store.loadModel(@model)
 
-      it "should call the findById method on the adapter", ->
-        expect(adapter.findById).toHaveBeenCalledWith(Person, @store, @model, 4)
+        it "should fire didStartLoading", ->
+          expect(@didStartLoading).toBeTruthy()
+
+        it "should set isLoading on the model to true", ->
+          expect(@model.get("isLoading")).toBeTruthy()
+
+        it "should call the findById method on the adapter", ->
+          expect(adapter.findById).toHaveBeenCalledWith(Person, @store, @model, 4)
+
+        it "should not call the findChild method on the adapter", ->
+          expect(adapter.findChild).not.toHaveBeenCalled()
+
+    describe "is lazy child", ->
+
+      describe "start loading", ->
+        beforeEach ->
+          @model = App.Teacher.create(parent: App.Student.create(id: 6), lazy: true)
+          spyOn(adapter, "findById")
+          spyOn(adapter, "findChild")
+          @store = Emu.Store.create
+            adapter: Adapter
+          @model.on "didStartLoading", => @didStartLoading = true
+          @store.loadModel(@model)
+
+        it "should fire didStartLoading", ->
+          expect(@didStartLoading).toBeTruthy()
+
+        it "should set isLoading on the model to true", ->
+          expect(@model.get("isLoading")).toBeTruthy()
+
+        it "should not call the findById method on the adapter", ->
+          expect(adapter.findById).not.toHaveBeenCalled()
+
+        it "should call the findChild method on the adapter", ->
+          expect(adapter.findChild).toHaveBeenCalledWith(App.Teacher, @store, @model, 6)
 
     describe "already loading", ->
       beforeEach ->
@@ -706,8 +738,23 @@ describe "Emu.Store", ->
         @pagedCollection = Emu.PagedModelCollection.create(pageSize: 100, type: App.Address)
         @store = Emu.Store.create
           adapter: Adapter
+        @pagedCollection.on "didStartLoading", => @didStartLoading = true
         spyOn(adapter, "findPage")
         @store.loadPaged(@pagedCollection, 1)
 
+      it "should fire didStartLoading", ->
+        expect(@didStartLoading).toBeTruthy()
+
       it "should call findPage on the adapter", ->
         expect(adapter.findPage).toHaveBeenCalledWith(@pagedCollection, @store, 1)
+
+  describe "didFindPaged", ->
+    beforeEach ->
+      @pagedCollection = Emu.PagedModelCollection.create(pageSize: 100, type: App.Address)
+      @store = Emu.Store.create
+        adapter: Adapter
+      @pagedCollection.on "didFinishLoading", => @didFinishLoading = true
+      @store.didFindPage(@pagedCollection)
+
+    it "should fire didFinishLoading", ->
+      expect(@didFinishLoading).toBeTruthy()
